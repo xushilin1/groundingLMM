@@ -416,14 +416,15 @@ def resume_training_from_checkpoint(model_engine, args):
 
 def main(args):
     tokenizer = setup_tokenizer_and_special_tokens(args)
+    cap_train_dataset, reg_train_dataset, seg_train_dataset, val_datasets = (
+        initialize_datasets_and_loaders(args, tokenizer))
+    
     model = initialize_model(args, tokenizer)
     prepare_model_for_training(model, tokenizer, args)
 
     model_engine, optimizer, scheduler = initialize_deepspeed(model, tokenizer, args)
     resume_training_from_checkpoint(model_engine, args)
 
-    cap_train_dataset, reg_train_dataset, seg_train_dataset, val_datasets = (
-        initialize_datasets_and_loaders(args, tokenizer))
     cap_train_loader, reg_train_loader, seg_train_loader, val_loader = (
         setup_data_loaders(args, cap_train_dataset, reg_train_dataset, seg_train_dataset, val_datasets, tokenizer))
 
