@@ -191,7 +191,7 @@ class RefCocoRegDataset(RegionBaseDataset):
                                                      "attributes.")
         json_path = os.path.join("mdetr_annotations", "finetune_refcoco_train.json")
         dataset_name = "RefCoco_Reg"
-        image_dir = "coco_2014"
+        image_dir = "coco_2014/train2014"
         question_templates = ['<region>',]
         mode = "Val" if validation else "Train"
 
@@ -236,7 +236,7 @@ class RefCocoPRegDataset(RegionBaseDataset):
         json_path = os.path.join(
             "mdetr_annotations", json_files['validation'] if validation else json_files['training']
             )
-        image_dir = "coco_2014"
+        image_dir = "coco_2014/train2014"
         question_templates = ['<region>', ]
         mode = "Val" if validation else "Train"
 
@@ -255,7 +255,7 @@ class VisualGenomeRegDataset(RegionBaseDataset):
         dataset_name = "visual_genome"
         json_files = {'validation': "test_caption.json", 'training': "train.json"}
         json_path = json_files['validation'] if validation else json_files['training']
-        image_dir = "images"
+        image_dir = "visual_genome/images"
         question_templates = REGION_QUESTIONS
         mode = "Val" if validation else "Train"
 

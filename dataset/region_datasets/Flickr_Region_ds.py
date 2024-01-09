@@ -33,9 +33,8 @@ class Flickr30kRegDataset(torch.utils.data.Dataset):
         self.validation = validation
         self.random_sampling = random_sampling
 
-        self.base_dir = os.path.join(dataset_dir, "flikcr_30k")
-        self.image_folder = os.path.join(self.base_dir, "flickr30k-images")
-        self.ann_file = os.path.join(self.base_dir, "mdetr_annotations", "final_flickr_mergedGT_train.json")
+        self.ann_file = os.path.join(dataset_dir, "RefCoco_Reg", "mdetr_annotations", "final_flickr_mergedGT_train.json")
+        self.image_folder = os.path.join(dataset_dir, "flikcr_30k", "train")
 
         self.data_infos = self._load_annotations(self.ann_file)
         self.data_infos = [self.data_infos[i] for i in self._filter_images(min_size=32)]
