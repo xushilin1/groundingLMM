@@ -80,7 +80,7 @@ class ReferSegmDataset(torch.utils.data.Dataset):
             if dataset_name == 'refclef':
                 item["file_name"] = os.path.join(dataset_dir, "images", "saiapr_tc-12", item["file_name"])
             else:
-                item["file_name"] = os.path.join(dataset_dir.replace("Refer_Segm/", ""), "coco_2014/train2014",
+                item["file_name"] = os.path.join(dataset_dir.replace("Refer_Segm", ""), "coco_2014/train2014",
                                                  item["file_name"])
             images.append(item)
         return images

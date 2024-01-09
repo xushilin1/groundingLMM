@@ -210,7 +210,7 @@ class RefCocoGRegDataset(RegionBaseDataset):
         dataset_name = "RefCoco_Reg"
         json_files = {'validation': "finetune_refcocog_val.json", 'training': "finetune_refcocog_train.json"}
         json_path = os.path.join("mdetr_annotations", json_files['validation'] if validation else json_files['training'])
-        image_dir = "coco_2014"
+        image_dir = "coco_2014/train2014"
         question_templates = REGION_QUESTIONS
         mode = "Val" if validation else "Train"
 
