@@ -125,7 +125,7 @@ class LlavaMetaForCausalLM(ABC):
         cur_image_idx = 0
         for batch_idx, (cur_input_ids, reg_feat) in enumerate(zip(input_ids, mlvl_reg_features)): # Adjusted the loop to include reg_feat
             curr_full_input_ids = []
-            if (cur_input_ids == IMAGE_TOKEN_INDEX).sum() == 0:
+            if (cur_input_ids == IMAGE_TOKEN_INDEX).sum() == 0: # 输入文本没有<image> ???
                 # multimodal LLM, but the current sample is not multimodal
                 cur_input_embeds = self.get_model().embed_tokens(cur_input_ids)
                 cur_input_embeds = (
@@ -145,12 +145,10 @@ class LlavaMetaForCausalLM(ABC):
                 cur_labels = labels[batch_idx]
                 cur_new_labels = []
                 assert cur_labels.shape == cur_input_ids.shape
-            while image_token_indices.numel() > 0:
+            while image_token_indices.numel() > 0: # <image> token的个数
                 cur_image_features = image_features[cur_image_idx]
                 image_token_start = image_token_indices[0]
-                if getattr(self.config, "tune_mm_mlp_adapter", False) and getattr(
-                    self.config, "mm_use_im_start_end", False
-                ):
+                if getattr(self.config, "tune_mm_mlp_adapter", False) and getattr(self.config, "mm_use_im_start_end", False):
                     # preparing input embedding
                     cur_new_input_embeds.append(
                         self.get_model()
@@ -189,15 +187,15 @@ class LlavaMetaForCausalLM(ABC):
                             cur_labels[image_token_start : image_token_start + 1]
                         )
                         cur_labels = cur_labels[image_token_start + 2 :]
-                elif getattr(self.config, "mm_use_im_start_end", False):
+                elif getattr(self.config, "mm_use_im_start_end", False): # <im_start><image><im_end>
                     # preparing input embedding
                     cur_new_input_embeds.append(
-                        self.get_model().embed_tokens(cur_input_ids[:image_token_start])
+                        self.get_model().embed_tokens(cur_input_ids[:image_token_start]) # ... <im_start>
                     )
-                    cur_new_input_embeds.append(cur_image_features)
+                    cur_new_input_embeds.append(cur_image_features) # 图片特征
                     cur_new_input_embeds.append(
                         self.get_model().embed_tokens(
-                            cur_input_ids[image_token_start + 1 : image_token_start + 2]
+                            cur_input_ids[image_token_start + 1 : image_token_start + 2] # <im_end>
                         )
                     )
                     # preparing input_ids
@@ -246,19 +244,15 @@ class LlavaMetaForCausalLM(ABC):
                         cur_labels = cur_labels[image_token_start + 1 :]
 
                 cur_image_idx += 1
-                if getattr(self.config, "tune_mm_mlp_adapter", False) and getattr(
-                    self.config, "mm_use_im_start_end", False
-                ):
+                if getattr(self.config, "tune_mm_mlp_adapter", False) and getattr(self.config, "mm_use_im_start_end", False):
                     cur_input_ids = cur_input_ids[image_token_start + 2 :]
                 elif getattr(self.config, "mm_use_im_start_end", False):
-                    cur_input_ids = cur_input_ids[image_token_start + 2 :]
+                    cur_input_ids = cur_input_ids[image_token_start + 2 :] #从<im_end>后一位开始，
                 else:
                     cur_input_ids = cur_input_ids[image_token_start + 1 :]
                 image_token_indices = torch.where(cur_input_ids == IMAGE_TOKEN_INDEX)[0]
             if cur_input_ids.numel() > 0:
-                if getattr(self.config, "tune_mm_mlp_adapter", False) and getattr(
-                    self.config, "mm_use_im_start_end", False
-                ):
+                if getattr(self.config, "tune_mm_mlp_adapter", False) and getattr(self.config, "mm_use_im_start_end", False):
                     cur_new_input_embeds.append(
                         self.get_model().embed_tokens(cur_input_ids).detach()
                     )

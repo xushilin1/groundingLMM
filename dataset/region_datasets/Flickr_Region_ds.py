@@ -188,6 +188,6 @@ class Flickr30kRegDataset(torch.utils.data.Dataset):
 
         questions, conversations = self.create_conversations(selected_labels, caption)
         label = torch.ones(grounding_enc_image.shape[1], grounding_enc_image.shape[2]) * self.IGNORE_LABEL
-
+        bboxes = bboxes.repeat(2,1)
         return (image_path, global_enc_image, grounding_enc_image, bboxes, conversations, masks, label, image_resize,
                 questions, selected_labels)
