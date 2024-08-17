@@ -1,5 +1,5 @@
 """
-train.py - GLaMM Training on Single Dataset Type
+train_ft.py - GLaMM Training on Single Dataset Type
 
 Trains the GLaMM model on one dataset type (Caption, Region, or Segmentation) at a time, iterating thoroughly through
 the chosen dataset. This targeted approach is optimal for specialized training on specific downstream task.
@@ -23,7 +23,7 @@ from model.GLaMM import GLaMMForCausalLM
 from model.llava import conversation as conversation_lib
 
 from dataset.dataset import custom_collate_fn
-from utils.utils import (DEFAULT_IM_END_TOKEN, DEFAULT_IM_START_TOKEN, AverageMeter, ProgressMeter, dict_to_cuda,
+from tools.utils import (DEFAULT_IM_END_TOKEN, DEFAULT_IM_START_TOKEN, AverageMeter, ProgressMeter, dict_to_cuda,
                          Summary, intersectionAndUnionGPU)
 
 from dataset.gcg_datasets.GranDf_gcg_ds import GranDfDataset, OpenPsgGCGDataset, Flickr30kGCGDataset, RefCOCOgGCGDataset
@@ -561,14 +561,15 @@ def train(data_loader, model, epoch, scheduler, writer, dataset_iter, args):
             # Prepare data and convert relevant tensors to bfloat16
             data_batch = dict_to_cuda(data_batch)
             for key in ["global_enc_images", "grounding_enc_images"]:
-                data_batch[key] = data_batch[key].bfloat16()
+                if data_batch[key] is not None:
+                    data_batch[key] = data_batch[key].bfloat16()
 
             output_dict = model(**data_batch)
 
             # Update training metrics
             for key, tracker in trackers.items():
                 if key in output_dict:
-                    tracker.update(output_dict[key].item(), data_batch["grounding_enc_images"].size(0))
+                    tracker.update(output_dict[key].item(), data_batch["global_enc_images"].size(0))
 
             model.backward(output_dict["loss"])
             model.step()
@@ -655,14 +656,15 @@ def validate_model_performance(validation_loader, training_model, current_epoch,
             # Prepare data and convert relevant tensors to bfloat16
             data_batch = dict_to_cuda(data_batch)
             for key in ["global_enc_images", "grounding_enc_images"]:
-                data_batch[key] = data_batch[key].bfloat16()
+                if data_batch[key] is not None:
+                    data_batch[key] = data_batch[key].bfloat16()
             torch.cuda.empty_cache()
             # Model inference without gradient tracking
             with torch.no_grad():
                 predictions = training_model(**data_batch)
             # Update performance metrics)
             for key, tracker in trackers.items():
-                tracker.update(predictions[key].item(), data_batch["grounding_enc_images"].size(0))
+                tracker.update(predictions[key].item(), data_batch["global_enc_images"].size(0))
 
         # Synchronize metrics across processes
         for tracker in trackers.values():

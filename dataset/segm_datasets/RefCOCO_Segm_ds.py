@@ -10,7 +10,7 @@ from model.llava import conversation as conversation_lib
 from model.SAM.utils.transforms import ResizeLongestSide
 from dataset.utils.grefer import G_REFER
 from dataset.utils.refcoco_refer import REFER
-from utils.utils import DEFAULT_IMAGE_TOKEN
+from tools.utils import DEFAULT_IMAGE_TOKEN
 from dataset.utils.utils import ANSWER_LIST, SEG_QUESTIONS
 
 
@@ -80,7 +80,7 @@ class ReferSegmDataset(torch.utils.data.Dataset):
             if dataset_name == 'refclef':
                 item["file_name"] = os.path.join(dataset_dir, "images", "saiapr_tc-12", item["file_name"])
             else:
-                item["file_name"] = os.path.join(dataset_dir.replace("Refer_Segm", ""), "coco_2014/train2014",
+                item["file_name"] = os.path.join(dataset_dir.replace("Refer_Segm/", ""), "coco_2014/train2014",
                                                  item["file_name"])
             images.append(item)
         return images

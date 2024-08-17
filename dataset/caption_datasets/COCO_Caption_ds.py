@@ -7,7 +7,7 @@ from pycocotools.coco import COCO
 from transformers import CLIPImageProcessor
 from model.llava import conversation as conversation_lib
 from model.SAM.utils.transforms import ResizeLongestSide
-from utils.utils import DEFAULT_IMAGE_TOKEN
+from tools.utils import DEFAULT_IMAGE_TOKEN
 from dataset.utils.utils import CAPTION_QUESTIONS
 
 
@@ -34,8 +34,9 @@ class CocoCapDataset(torch.utils.data.Dataset):
         self.random_sampling = random_sampling
 
         # Defining paths
+        mode = "val" if validation else "train"
         self.base_dir = os.path.join(dataset_dir, "coco_2017")
-        self.image_folder = os.path.join(self.base_dir, "train2017")
+        self.image_folder = os.path.join(dataset_dir, f"coco_2017/{mode}2017")
         json_files = {'validation': "captions_val2017.json", 'training': "captions_train2017.json"}
         annotations_file = os.path.join(self.base_dir, "annotations",
                                         json_files['validation'] if validation else json_files['training'])
@@ -109,15 +110,14 @@ class CocoCapDataset(torch.utils.data.Dataset):
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         # Prepare input for Global Image Encoder
         global_enc_image = self.global_enc_processor.preprocess(image, return_tensors="pt")["pixel_values"][0]
-        image = self.transform.apply_image(image)
-        image_resize = image.shape[:2]
-        # Prepare input for Grounding Image Encoder
-        grounding_enc_image = self.grounding_enc_processor(torch.from_numpy(image).permute(2, 0, 1).contiguous())
+        # Skip input for Grounding Image Encoder
+        grounding_enc_image = None
+        image_resize = None
 
         masks, bboxes = None, None
 
         questions, conversations = self.create_conversations(caption)
-        label = torch.full((grounding_enc_image.shape[1], grounding_enc_image.shape[2]), self.IGNORE_LABEL)
+        label = None
         selected_labels = [caption]
 
         return (image_path, global_enc_image, grounding_enc_image, bboxes, conversations, masks, label, image_resize,

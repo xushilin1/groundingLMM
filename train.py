@@ -23,7 +23,7 @@ from model.GLaMM import GLaMMForCausalLM
 from model.llava import conversation as conversation_lib
 
 from dataset.dataset import custom_collate_fn, HybridSegDataset, HybridRegDataset, HybridCapDataset
-from utils.utils import (DEFAULT_IM_END_TOKEN, DEFAULT_IM_START_TOKEN, AverageMeter, ProgressMeter, dict_to_cuda,
+from tools.utils import (DEFAULT_IM_END_TOKEN, DEFAULT_IM_START_TOKEN, AverageMeter, ProgressMeter, dict_to_cuda,
                          Summary, intersectionAndUnionGPU)
 
 from dataset.segm_datasets.RefCOCO_Segm_ds import ReferSegmDataset
@@ -61,12 +61,13 @@ def parse_args(args):
     parser.add_argument("--weight_segm", default=0.45, type=float, help="Sampling weight for segmentation data")
     parser.add_argument("--dataset_dir", default="./data", type=str)
     parser.add_argument("--seg_dataset", default="Semantic_Segm||Refer_Segm||RefCoco_GCG||PSG_GCG||Flickr_GCG||GranDf_GCG",
-                        type=str, help="Choose from: Semantic_Segm, Refer_Segm, RefCoco_GCG, GranDf_GCG, PSG_GCG, Flickr_GCG")
+                        type=str, help="Choose from: Semantic_Segm, Refer_Segm, RefCoco_GCG, GranDf_GCG, PSG_GCG, Flickr_GCG, GrandRefer_Segm")
     parser.add_argument("--segm_sample_rates", default="5,4,3,3,3,1", type=str)
     parser.add_argument("--reg_dataset", default="RefCoco_Reg||RefCocoG_Reg||RefCocoP_Reg||VisGen_Reg",
-                        type=str, help="Choose from: RefCoco_Reg, RefCocoG_Reg, RefCocoP_Reg, VisGen_Reg, Flickr_Reg")
+                        type=str, help="Choose from: RefCoco_Reg, RefCocoG_Reg, RefCocoP_Reg, VisGen_Reg, Flickr_Reg, GrandRefer_Reg")
     parser.add_argument("--reg_sample_rates", default="1,1,1,1", type=str)
-    parser.add_argument("--cap_dataset", default="CocoCap||LLaVaInstruct", type=str, help="Choose from: CocoCap, LLaVaInstruct")
+    parser.add_argument("--cap_dataset", default="CocoCap||LLaVaInstruct", type=str,
+                        help="Choose from: CocoCap, LLaVaInstruct, GrandCaptionDataset")
     parser.add_argument("--cap_sample_rates", default="1,1", type=str)
     parser.add_argument("--semantic_segm_data", default="ade20k||cocostuff||pascal_part||paco_lvis||mapillary", type=str)
     parser.add_argument("--refer_segm_data", default="refcoco||refcoco+||refcocog||refclef", type=str)
@@ -416,15 +417,14 @@ def resume_training_from_checkpoint(model_engine, args):
 
 def main(args):
     tokenizer = setup_tokenizer_and_special_tokens(args)
-    cap_train_dataset, reg_train_dataset, seg_train_dataset, val_datasets = (
-        initialize_datasets_and_loaders(args, tokenizer))
-    
     model = initialize_model(args, tokenizer)
     prepare_model_for_training(model, tokenizer, args)
 
     model_engine, optimizer, scheduler = initialize_deepspeed(model, tokenizer, args)
     resume_training_from_checkpoint(model_engine, args)
 
+    cap_train_dataset, reg_train_dataset, seg_train_dataset, val_datasets = (
+        initialize_datasets_and_loaders(args, tokenizer))
     cap_train_loader, reg_train_loader, seg_train_loader, val_loader = (
         setup_data_loaders(args, cap_train_dataset, reg_train_dataset, seg_train_dataset, val_datasets, tokenizer))
 
@@ -549,14 +549,15 @@ def train(active_datasets, model, epoch, scheduler, writer, dataset_iters, args,
             # Prepare data and convert relevant tensors to bfloat16
             data_batch = dict_to_cuda(data_batch)
             for key in ["global_enc_images", "grounding_enc_images"]:
-                data_batch[key] = data_batch[key].bfloat16()
+                if data_batch[key] is not None:
+                    data_batch[key] = data_batch[key].bfloat16()
 
             output_dict = model(**data_batch)
 
             # Update training metrics
             for key, tracker in trackers.items():
                 if key in output_dict:
-                    tracker.update(output_dict[key].item(), data_batch["grounding_enc_images"].size(0))
+                    tracker.update(output_dict[key].item(), data_batch["global_enc_images"].size(0))
 
             model.backward(output_dict["loss"])
             model.step()
@@ -643,14 +644,15 @@ def validate_model_performance(validation_loader, training_model, current_epoch,
             # Prepare data and convert relevant tensors to bfloat16
             data_batch = dict_to_cuda(data_batch)
             for key in ["global_enc_images", "grounding_enc_images"]:
-                data_batch[key] = data_batch[key].bfloat16()
+                if data_batch[key] is not None:
+                    data_batch[key] = data_batch[key].bfloat16()
             torch.cuda.empty_cache()
             # Model inference without gradient tracking
             with torch.no_grad():
                 predictions = training_model(**data_batch)
             # Update performance metrics)
             for key, tracker in trackers.items():
-                tracker.update(predictions[key].item(), data_batch["grounding_enc_images"].size(0))
+                tracker.update(predictions[key].item(), data_batch["global_enc_images"].size(0))
 
         # Synchronize metrics across processes
         for tracker in trackers.values():

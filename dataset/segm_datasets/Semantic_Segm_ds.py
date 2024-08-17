@@ -11,7 +11,7 @@ from pycocotools.coco import COCO
 from transformers import CLIPImageProcessor
 from model.llava import conversation as conversation_lib
 from model.SAM.utils.transforms import ResizeLongestSide
-from utils.utils import DEFAULT_IMAGE_TOKEN
+from tools.utils import DEFAULT_IMAGE_TOKEN
 from dataset.utils.utils import ANSWER_LIST, SEG_QUESTIONS
 
 
@@ -35,7 +35,7 @@ def init_cocostuff(dataset_dir):
     # Annotations
     cocostuff_labels = glob.glob(os.path.join(dataset_dir, "cocostuff", "train2017", "*.png"))
     # Images are obtained from COCO 2017 images
-    cocostuff_images = [label.replace(".png", ".jpg").replace("cocostuff", "coco_2017").replace("Semantic_Segm", "") for
+    cocostuff_images = [label.replace(".png", ".jpg").replace("cocostuff", "coco_2017").replace("Semantic_Segm/", "") for
                         label in cocostuff_labels]
     return np.array(cocostuff_classes), cocostuff_images, cocostuff_labels
 
@@ -116,7 +116,7 @@ class SemanticSegmDataset(torch.utils.data.Dataset):
             classes, images, labels = eval("init_{}".format(ds))(self.dataset_dir)
             self.data2list[ds] = (images, labels)
             self.data2classes[ds] = classes
-            print(f'\033[92m----SEG-{"Val" if validation else "Train"}: Loaded ReferSeg - {ds} dataset, {len(images)} images ----\033[0m')
+            print(f'\033[92m----SEG-{"Val" if validation else "Train"}: Loaded ReferSeg - {ds} dataset ----\033[0m')
 
         if "cocostuff" in self.semantic_seg_ds_list:
             self.cocostuff_class2index = {c: i for i, c in enumerate(self.data2classes["cocostuff"])}
@@ -170,14 +170,10 @@ class SemanticSegmDataset(torch.utils.data.Dataset):
             random_idx = random.randint(0, len(img_ids) - 1)
             img_info = coco_api.loadImgs([img_ids[random_idx]])[0]
             file_name = img_info["file_name"]
-            if dataset_name == "pascal_part":
-                image_path = os.path.join(
-                    self.dataset_dir, dataset_name, "VOCdevkit", "VOC2010", "JPEGImages", file_name
-                )
-            if dataset_name == "paco_lvis":
-                image_path = os.path.join(
-                    self.dataset_dir.replace("Semantic_Segm", ""), "coco_2017", file_name
-                )
+            image_path = (os.path.join(
+                 self.dataset_dir, dataset_name, "VOCdevkit", "VOC2010", "JPEGImages", file_name
+                ) if dataset_name == "pascal_part" else self.dataset_dir.replace("Semantic_Segm/", ""),
+                          "coco_2017", file_name)
 
             annotation_ids = coco_api.getAnnIds(imgIds=img_info["id"])
             annotations = coco_api.loadAnns(annotation_ids)
@@ -220,6 +216,10 @@ class SemanticSegmDataset(torch.utils.data.Dataset):
                 ) if len(classes) >= self.num_classes_per_sample else classes
 
         # Load and process the image
+        if isinstance(image_path, tuple):
+            print(f"Image path does not exist: {image_path}")
+        if not os.path.exists(image_path):
+            print(f"Image path does not exist: {image_path}")
         image = cv2.imread(image_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         global_enc_img = self.global_enc_processor.preprocess(image, return_tensors="pt")["pixel_values"][0]

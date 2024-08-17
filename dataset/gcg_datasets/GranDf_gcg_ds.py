@@ -11,7 +11,7 @@ from pycocotools.coco import COCO
 from transformers import CLIPImageProcessor
 from model.llava import conversation as conversation_lib
 from model.SAM.utils.transforms import ResizeLongestSide
-from utils.utils import DEFAULT_IMAGE_TOKEN
+from tools.utils import DEFAULT_IMAGE_TOKEN
 from dataset.utils.utils import GCG_QUESTIONS
 
 
@@ -163,8 +163,9 @@ class GranDfDataset(GCGBaseDataset):
     """
     def __init__(self, dataset_dir, tokenizer, global_image_encoder, epoch_samples=8000, precision="fp32",
                  image_size=224, num_classes_per_sample=3, validation=False, random_sampling=True):
+        self.base_dir = os.path.join(dataset_dir, "GranDf")
         json_path = "GranDf_HA_GCG_train.json"
-        image_dir = os.path.join(dataset_dir, "GranDf", "GranDf_HA_images", "train")
+        image_dir = os.path.join(self.base_dir, "GranDf_HA_images", "train")
         mode = "Val" if validation else "Train"
 
         super().__init__(
@@ -178,7 +179,7 @@ class OpenPsgGCGDataset(GCGBaseDataset):
                  image_size=224, num_classes_per_sample=3, validation=False, random_sampling=True):
         json_files = {'validation': "OpenPsgGCG_val.json", 'training': "OpenPsgGCG_train.json"}
         json_path = json_files['validation'] if validation else json_files['training']
-        image_dir = os.path.join(dataset_dir, "coco_2017")
+        image_dir = os.path.join("coco_2017", "train2017")
         mode = "Val" if validation else "Train"
 
         super().__init__(
@@ -192,7 +193,7 @@ class Flickr30kGCGDataset(GCGBaseDataset):
                  image_size=224, num_classes_per_sample=3, validation=False, random_sampling=True):
         json_files = {'validation': "flickr_mergedGT_GCG_val.json", 'training': "flickr_mergedGT_GCG_train.json"}
         json_path = json_files['validation'] if validation else json_files['training']
-        image_dir = os.path.join(dataset_dir, "flikcr_30k", "train")
+        image_dir = os.path.join("flikcr_30k", "train")
         mode = "Val" if validation else "Train"
 
         super().__init__(
@@ -280,7 +281,7 @@ class RefCOCOgGCGDataset(GCGBaseDataset):
                  image_size=224, num_classes_per_sample=3, validation=False, random_sampling=True):
         json_files = {'validation': "RefCOCOg_GCG_val.json", 'training': "RefCOCOg_GCG_train.json"}
         json_path = json_files['validation'] if validation else json_files['training']
-        image_dir = os.path.join(dataset_dir, "coco_2014", "train2014")
+        image_dir = os.path.join("coco_2014", "train2014")
         mode = "Val" if validation else "Train"
 
         super().__init__(

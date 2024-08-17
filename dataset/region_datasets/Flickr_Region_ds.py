@@ -8,7 +8,7 @@ from pycocotools.coco import COCO
 from transformers import CLIPImageProcessor
 from model.llava import conversation as conversation_lib
 from model.SAM.utils.transforms import ResizeLongestSide
-from utils.utils import DEFAULT_IMAGE_TOKEN
+from tools.utils import DEFAULT_IMAGE_TOKEN
 from dataset.utils.utils import REGION_QUESTIONS, REGION_GROUP_QUESTIONS
 
 
@@ -33,8 +33,9 @@ class Flickr30kRegDataset(torch.utils.data.Dataset):
         self.validation = validation
         self.random_sampling = random_sampling
 
-        self.ann_file = os.path.join(dataset_dir, "RefCoco_Reg", "mdetr_annotations", "final_flickr_mergedGT_train.json")
-        self.image_folder = os.path.join(dataset_dir, "flikcr_30k", "train")
+        self.base_dir = os.path.join(dataset_dir, "flikcr_30k")
+        self.image_folder = os.path.join(self.base_dir, "flickr30k-images")
+        self.ann_file = os.path.join(self.base_dir, "mdetr_annotations", "final_flickr_mergedGT_train.json")
 
         self.data_infos = self._load_annotations(self.ann_file)
         self.data_infos = [self.data_infos[i] for i in self._filter_images(min_size=32)]
@@ -176,10 +177,9 @@ class Flickr30kRegDataset(torch.utils.data.Dataset):
         # Prepare input for Global Image Encoder
         global_enc_image = self.global_enc_processor.preprocess(image, return_tensors="pt")["pixel_values"][0]
         post_h, post_w = global_enc_image.shape[1:3]
-        # Prepare input for Grounding Image Encoder
-        image = self.transform.apply_image(image)
-        image_resize = image.shape[:2]
-        grounding_enc_image = self.grounding_enc_processor(torch.from_numpy(image).permute(2, 0, 1).contiguous())
+        # Skip input for Grounding Image Encoder
+        grounding_enc_image = None
+        image_resize = None
         # Prepare input for Region Image Encoder
         bboxes, selected_labels = self.region_enc_processor(
             (orig_h, orig_w), (post_h, post_w), data_bboxes, data_labels, global_enc_image.device
@@ -187,7 +187,7 @@ class Flickr30kRegDataset(torch.utils.data.Dataset):
         masks = None
 
         questions, conversations = self.create_conversations(selected_labels, caption)
-        label = torch.ones(grounding_enc_image.shape[1], grounding_enc_image.shape[2]) * self.IGNORE_LABEL
-        bboxes = bboxes.repeat(2,1)
+        label = None
+
         return (image_path, global_enc_image, grounding_enc_image, bboxes, conversations, masks, label, image_resize,
                 questions, selected_labels)

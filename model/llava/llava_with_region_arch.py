@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from abc import ABC, abstractmethod
 
-from utils.utils import IGNORE_INDEX, IMAGE_TOKEN_INDEX
+from tools.utils import IGNORE_INDEX, IMAGE_TOKEN_INDEX
 from model.layers import MLVLROIQueryModule
 from model.llava.model.multimodal_encoder.builder import build_vision_tower
 
@@ -80,22 +80,11 @@ class LlavaMetaForCausalLM(ABC):
         image_features = self.get_model().mm_projector(image_features)
         return image_features, image_forward_outs
 
-    def prepare_inputs_labels_for_multimodal(
-        self, input_ids, attention_mask, past_key_values, labels, images, bboxes
-    ):
+    def prepare_inputs_labels_for_multimodal(self, input_ids, attention_mask, past_key_values, labels, images, bboxes):
         vision_tower = self.get_vision_tower()
         if vision_tower is None or images is None or input_ids.shape[1] == 1:
-            if (
-                past_key_values is not None
-                and vision_tower is not None
-                and images is not None
-                and input_ids.shape[1] == 1
-            ):
-                attention_mask = torch.ones(
-                    (attention_mask.shape[0], past_key_values[-1][-1].shape[-2] + 1),
-                    dtype=attention_mask.dtype,
-                    device=attention_mask.device,
-                )
+            if (past_key_values is not None and vision_tower is not None and images is not None and input_ids.shape[1] == 1):
+                attention_mask = torch.ones((attention_mask.shape[0], past_key_values[-1][-1].shape[-2] + 1),dtype=attention_mask.dtype,device=attention_mask.device,)
             return input_ids, attention_mask, past_key_values, None, labels
 
         if type(images) is list or images.ndim == 5:
@@ -125,15 +114,10 @@ class LlavaMetaForCausalLM(ABC):
         cur_image_idx = 0
         for batch_idx, (cur_input_ids, reg_feat) in enumerate(zip(input_ids, mlvl_reg_features)): # Adjusted the loop to include reg_feat
             curr_full_input_ids = []
-            if (cur_input_ids == IMAGE_TOKEN_INDEX).sum() == 0: # 输入文本没有<image> ???
+            if (cur_input_ids == IMAGE_TOKEN_INDEX).sum() == 0:
                 # multimodal LLM, but the current sample is not multimodal
                 cur_input_embeds = self.get_model().embed_tokens(cur_input_ids)
-                cur_input_embeds = (
-                    cur_input_embeds
-                    + (
-                        0.0 * self.get_model().mm_projector(vision_tower.dummy_feature)
-                    ).sum()
-                )
+                cur_input_embeds = (cur_input_embeds+ (0.0 * self.get_model().mm_projector(vision_tower.dummy_feature)).sum())
                 new_input_embeds.append(cur_input_embeds)
                 if labels is not None:
                     new_labels.append(labels[batch_idx])
@@ -145,27 +129,16 @@ class LlavaMetaForCausalLM(ABC):
                 cur_labels = labels[batch_idx]
                 cur_new_labels = []
                 assert cur_labels.shape == cur_input_ids.shape
-            while image_token_indices.numel() > 0: # <image> token的个数
+            while image_token_indices.numel() > 0:
                 cur_image_features = image_features[cur_image_idx]
                 image_token_start = image_token_indices[0]
                 if getattr(self.config, "tune_mm_mlp_adapter", False) and getattr(self.config, "mm_use_im_start_end", False):
                     # preparing input embedding
+                    cur_new_input_embeds.append(self.get_model().embed_tokens(cur_input_ids[: image_token_start - 1]).detach())
                     cur_new_input_embeds.append(
-                        self.get_model()
-                        .embed_tokens(cur_input_ids[: image_token_start - 1])
-                        .detach()
-                    )
-                    cur_new_input_embeds.append(
-                        self.get_model().embed_tokens(
-                            cur_input_ids[image_token_start - 1 : image_token_start]
-                        )
-                    )
+                        self.get_model().embed_tokens(cur_input_ids[image_token_start - 1 : image_token_start]))
                     cur_new_input_embeds.append(cur_image_features)
-                    cur_new_input_embeds.append(
-                        self.get_model().embed_tokens(
-                            cur_input_ids[image_token_start + 1 : image_token_start + 2]
-                        )
-                    )
+                    cur_new_input_embeds.append(self.get_model().embed_tokens(cur_input_ids[image_token_start + 1 : image_token_start + 2] ) )
                     # preparing input_ids
                     curr_full_input_ids.append(cur_input_ids[: image_token_start - 1])
                     curr_full_input_ids.append(cur_input_ids[image_token_start - 1: image_token_start])
@@ -175,101 +148,58 @@ class LlavaMetaForCausalLM(ABC):
                     # preparing labels
                     if labels is not None:
                         cur_new_labels.append(cur_labels[:image_token_start])
-                        cur_new_labels.append(
-                            torch.full(
-                                (cur_image_features.shape[0],),
-                                IGNORE_INDEX,
-                                device=labels.device,
-                                dtype=labels.dtype,
-                            )
-                        )
-                        cur_new_labels.append(
-                            cur_labels[image_token_start : image_token_start + 1]
-                        )
+                        cur_new_labels.append(torch.full((cur_image_features.shape[0],),IGNORE_INDEX,device=labels.device,dtype=labels.dtype,))
+                        cur_new_labels.append(cur_labels[image_token_start : image_token_start + 1])
                         cur_labels = cur_labels[image_token_start + 2 :]
-                elif getattr(self.config, "mm_use_im_start_end", False): # <im_start><image><im_end>
+                elif getattr(self.config, "mm_use_im_start_end", False):
                     # preparing input embedding
-                    cur_new_input_embeds.append(
-                        self.get_model().embed_tokens(cur_input_ids[:image_token_start]) # ... <im_start>
-                    )
-                    cur_new_input_embeds.append(cur_image_features) # 图片特征
-                    cur_new_input_embeds.append(
-                        self.get_model().embed_tokens(
-                            cur_input_ids[image_token_start + 1 : image_token_start + 2] # <im_end>
-                        )
-                    )
+                    cur_new_input_embeds.append(self.get_model().embed_tokens(cur_input_ids[:image_token_start]))
+                    cur_new_input_embeds.append(cur_image_features)
+                    cur_new_input_embeds.append(self.get_model().embed_tokens(cur_input_ids[image_token_start + 1 : image_token_start + 2]))
                     # preparing input_ids
                     curr_full_input_ids.append(cur_input_ids[: image_token_start])
-                    curr_full_image_token = torch.full((cur_image_features.shape[0],), image_token_start,
-                                                       dtype=torch.int64)
+                    curr_full_image_token = torch.full((cur_image_features.shape[0],), image_token_start, dtype=torch.int64)
                     curr_full_input_ids.append(curr_full_image_token)
                     curr_full_input_ids.append(cur_input_ids[image_token_start + 1: image_token_start + 2])
                     # preparing labels
                     if labels is not None:
                         cur_new_labels.append(cur_labels[:image_token_start])
-                        cur_new_labels.append(
-                            torch.full(
-                                (cur_image_features.shape[0],),
-                                IGNORE_INDEX,
-                                device=labels.device,
-                                dtype=labels.dtype,
-                            )
-                        )
-                        cur_new_labels.append(
-                            cur_labels[image_token_start + 1 : image_token_start + 2]
-                        )
+                        cur_new_labels.append(torch.full((cur_image_features.shape[0],),IGNORE_INDEX,device=labels.device,dtype=labels.dtype,))
+                        cur_new_labels.append(cur_labels[image_token_start + 1 : image_token_start + 2])
                         cur_labels = cur_labels[image_token_start + 2 :]
                 else:
                     # preparing input embedding
-                    cur_new_input_embeds.append(
-                        self.get_model().embed_tokens(cur_input_ids[:image_token_start])
-                    )
+                    cur_new_input_embeds.append(self.get_model().embed_tokens(cur_input_ids[:image_token_start]))
                     cur_new_input_embeds.append(cur_image_features)
                     # preparing input_ids
                     curr_full_input_ids.append(cur_input_ids[: image_token_start])
-                    curr_full_image_token = torch.full((cur_image_features.shape[0],), image_token_start,
-                                                       dtype=torch.int64)
+                    curr_full_image_token = torch.full((cur_image_features.shape[0],), image_token_start, dtype=torch.int64)
                     curr_full_input_ids.append(curr_full_image_token)
                     # preparing labels
                     if labels is not None:
                         cur_new_labels.append(cur_labels[:image_token_start])
-                        cur_new_labels.append(
-                            torch.full(
-                                (cur_image_features.shape[0],),
-                                IGNORE_INDEX,
-                                device=labels.device,
-                                dtype=labels.dtype,
-                            )
-                        )
+                        cur_new_labels.append(torch.full((cur_image_features.shape[0],),IGNORE_INDEX,device=labels.device,dtype=labels.dtype,))
                         cur_labels = cur_labels[image_token_start + 1 :]
 
                 cur_image_idx += 1
                 if getattr(self.config, "tune_mm_mlp_adapter", False) and getattr(self.config, "mm_use_im_start_end", False):
                     cur_input_ids = cur_input_ids[image_token_start + 2 :]
                 elif getattr(self.config, "mm_use_im_start_end", False):
-                    cur_input_ids = cur_input_ids[image_token_start + 2 :] #从<im_end>后一位开始，
+                    cur_input_ids = cur_input_ids[image_token_start + 2 :]
                 else:
                     cur_input_ids = cur_input_ids[image_token_start + 1 :]
                 image_token_indices = torch.where(cur_input_ids == IMAGE_TOKEN_INDEX)[0]
             if cur_input_ids.numel() > 0:
                 if getattr(self.config, "tune_mm_mlp_adapter", False) and getattr(self.config, "mm_use_im_start_end", False):
-                    cur_new_input_embeds.append(
-                        self.get_model().embed_tokens(cur_input_ids).detach()
-                    )
+                    cur_new_input_embeds.append(self.get_model().embed_tokens(cur_input_ids).detach())
                 elif getattr(self.config, "mm_use_im_start_end", False):
-                    cur_new_input_embeds.append(
-                        self.get_model().embed_tokens(cur_input_ids)
-                    )
+                    cur_new_input_embeds.append(self.get_model().embed_tokens(cur_input_ids))
                 else:
-                    cur_new_input_embeds.append(
-                        self.get_model().embed_tokens(cur_input_ids)
-                    )
+                    cur_new_input_embeds.append(self.get_model().embed_tokens(cur_input_ids))
                 curr_full_input_ids.append(cur_input_ids)
                 if labels is not None:
                     cur_new_labels.append(cur_labels)
-            cur_new_input_embeds = [
-                x.to(device=self.device) for x in cur_new_input_embeds
-            ]
+            cur_new_input_embeds = [x.to(device=self.device) for x in cur_new_input_embeds]
             cur_new_input_embeds = torch.cat(cur_new_input_embeds, dim=0)
             curr_full_input_ids = [x.to(device=self.device) for x in curr_full_input_ids]
             curr_full_input_ids = torch.cat(curr_full_input_ids, dim=0)
@@ -287,8 +217,7 @@ class LlavaMetaForCausalLM(ABC):
                     reg_feat = reg_feat[:min_shape]
 
                 reg_embeds[reg_mask] = reg_feat.to(reg_embeds.dtype)
-                cur_new_input_embeds = cur_new_input_embeds * (~reg_mask).to(
-                    cur_new_input_embeds.dtype)[:, None] + reg_embeds
+                cur_new_input_embeds = cur_new_input_embeds * (~reg_mask).to(cur_new_input_embeds.dtype)[:, None] + reg_embeds
 
             new_input_embeds.append(cur_new_input_embeds)
             if labels is not None:
@@ -300,17 +229,7 @@ class LlavaMetaForCausalLM(ABC):
 
             new_input_embeds_align = []
             for cur_new_embed in new_input_embeds:
-                cur_new_embed = torch.cat(
-                    (
-                        cur_new_embed,
-                        torch.zeros(
-                            (max_len - cur_new_embed.shape[0], cur_new_embed.shape[1]),
-                            dtype=cur_new_embed.dtype,
-                            device=cur_new_embed.device,
-                        ),
-                    ),
-                    dim=0,
-                )
+                cur_new_embed = torch.cat((cur_new_embed,torch.zeros((max_len - cur_new_embed.shape[0], cur_new_embed.shape[1]),dtype=cur_new_embed.dtype,device=cur_new_embed.device,),),dim=0,)
                 new_input_embeds_align.append(cur_new_embed)
             new_input_embeds = torch.stack(new_input_embeds_align, dim=0)
 
@@ -318,46 +237,16 @@ class LlavaMetaForCausalLM(ABC):
                 new_labels_align = []
                 _new_labels = new_labels
                 for cur_new_label in new_labels:
-                    cur_new_label = torch.cat(
-                        (
-                            cur_new_label,
-                            torch.full(
-                                (max_len - cur_new_label.shape[0],),
-                                IGNORE_INDEX,
-                                dtype=cur_new_label.dtype,
-                                device=cur_new_label.device,
-                            ),
-                        ),
-                        dim=0,
-                    )
+                    cur_new_label = torch.cat((cur_new_label,torch.full((max_len - cur_new_label.shape[0],),IGNORE_INDEX,dtype=cur_new_label.dtype,device=cur_new_label.device,),),dim=0,)
                     new_labels_align.append(cur_new_label)
                 new_labels = torch.stack(new_labels_align, dim=0)
 
             if attention_mask is not None:
                 new_attention_mask = []
-                for cur_attention_mask, cur_new_labels, cur_new_labels_align in zip(
-                    attention_mask, _new_labels, new_labels
-                ):
-                    new_attn_mask_pad_left = torch.full(
-                        (cur_new_labels.shape[0] - labels.shape[1],),
-                        True,
-                        dtype=attention_mask.dtype,
-                        device=attention_mask.device,
-                    )
-                    new_attn_mask_pad_right = torch.full(
-                        (cur_new_labels_align.shape[0] - cur_new_labels.shape[0],),
-                        False,
-                        dtype=attention_mask.dtype,
-                        device=attention_mask.device,
-                    )
-                    cur_new_attention_mask = torch.cat(
-                        (
-                            new_attn_mask_pad_left,
-                            cur_attention_mask,
-                            new_attn_mask_pad_right,
-                        ),
-                        dim=0,
-                    )
+                for cur_attention_mask, cur_new_labels, cur_new_labels_align in zip(attention_mask, _new_labels, new_labels):
+                    new_attn_mask_pad_left = torch.full((cur_new_labels.shape[0] - labels.shape[1],),True,dtype=attention_mask.dtype,device=attention_mask.device,)
+                    new_attn_mask_pad_right = torch.full((cur_new_labels_align.shape[0] - cur_new_labels.shape[0],),False,dtype=attention_mask.dtype,device=attention_mask.device,)
+                    cur_new_attention_mask = torch.cat((new_attn_mask_pad_left,cur_attention_mask,new_attn_mask_pad_right,),dim=0,)
                     new_attention_mask.append(cur_new_attention_mask)
                 attention_mask = torch.stack(new_attention_mask, dim=0)
                 assert attention_mask.shape == new_labels.shape
@@ -367,18 +256,8 @@ class LlavaMetaForCausalLM(ABC):
                 new_labels = torch.stack(new_labels, dim=0)
 
             if attention_mask is not None:
-                new_attn_mask_pad_left = torch.full(
-                    (
-                        attention_mask.shape[0],
-                        new_input_embeds.shape[1] - input_ids.shape[1],
-                    ),
-                    True,
-                    dtype=attention_mask.dtype,
-                    device=attention_mask.device,
-                )
-                attention_mask = torch.cat(
-                    (new_attn_mask_pad_left, attention_mask), dim=1
-                )
+                new_attn_mask_pad_left = torch.full((attention_mask.shape[0],    new_input_embeds.shape[1] - input_ids.shape[1],),True,dtype=attention_mask.dtype,device=attention_mask.device,)
+                attention_mask = torch.cat((new_attn_mask_pad_left, attention_mask), dim=1)
                 assert attention_mask.shape == new_input_embeds.shape[:2]
 
         return None, attention_mask, past_key_values, new_input_embeds, new_labels
